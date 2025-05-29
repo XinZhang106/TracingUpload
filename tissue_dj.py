@@ -1,100 +1,92 @@
+from pandas.core.window import Expanding
+
 import startup
 import pickle
 
-from startup import tissues as TissueSchm
-from startup import animals as AnimalSchm
+from startup import djtissue, djanimal
 from startup import project_root
 
-class animal_basic_info:
-    animal = None
-    brainslice_id = None
+class animal:
+    animal_id = None
+    local_folder = None
+    def __init__(self, id):
+        self.animal_id = id
+        self.local_folder = project_root / str(id)
+
+class retina_tissue(animal):
     retina_id = None
-
-class tissue_operator(animal_basic_info):
-    def __init__(self):
-        return
-
-    def create_new_tissueCollection(self, animalid):
-        self.animal = animalid
-        return
-
-    def insert_retina(self, retina_side, comment = None):
-        qstr = 'animal_id = '+ str(self.animal)
-        qstr2 = 'side = ' + '"' + retina_side + '"'
-        query = TissueSchm.Retina() & qstr & qstr2
-        result = query.fetch(as_dict=True)
-        if (bool(result)):
-            print('Retina already exists!')
+    retina_side = None
+    def __init__(self, animalid, side):
+        self.animal_id = animalid
+        if (side in ['Left', 'Right']):
+            self.retina_side = side
         else:
-            if comment:
-                TissueSchm.Tissue.insert1({'owner': startup.who_are_you, 'tissue_info': comment})
-            else:
-                TissueSchm.Tissue.insert1({'owner': startup.who_are_you})
-            id = TissueSchm.Tissue.fetch('tissue_id', order_by='tissue_id desc', limit=1, as_dict=True)[0]
-            id = id['tissue_id']
-            print('Tissue created: '+ str(id))
+            Exception('Check your typo of side!')
+            return
 
-            #insert the eye
-            query = AnimalSchm.Eye & qstr
-            result = query.fetch(as_dict=True)
-            if (bool(result)== False):
-                #insert eye
-                AnimalSchm.Eye.insert1({'animal_id': self.animal, 'side': retina_side})
-                print('Inserting '+ retina_side + ' of animal: '+str(self.animal))
-
-            #assign the newest tissue if to the retina
-            TissueSchm.Retina.insert1({'tissue_id': id, 'animal_id': self.animal, 'side':retina_side})
-            self.retina_id = id
-            print('Inserting successful! Mouse: ' + str(self.animal)+', Retina tissue id: '+ str(self.retina_id))
-        return
-
-    def insert_brainslice(self, slicethick, slice_orientation, comment = None):
-        qstr = 'animal_id= '+ str(self.animal)
-        query = TissueSchm.BrainSliceBatch & qstr
-        result = query.fetch(as_dict=True)
+    def uploader(self, user_name):
+        qdict = {}
+        qdict['animal_id'] = self.animal_id
+        qdict['side'] = self.retina_side
+        query = djtissue & qdict
+        result = query.fetch1('tissue_id')
         if (bool(result)):
-            print('Brain slice batch already exists!')
+            print('Retina tissue exists: ' + str(result['tissue_id']))
+            self.retina_id = result['tissue_id']
         else:
-            if comment:
-                TissueSchm.Tissue.insert1({'owner': startup.who_are_you, 'tissue_info': comment})
-            else:
-                TissueSchm.Tissue.insert1({'owner': startup.who_are_you})
-            id = TissueSchm.Tissue.fetch('tissue_id', order_by='tissue_id desc', limit=1, as_dict=True)[0]
-            id = id['tissue_id']
-            print('Tissue created: '+ str(id))
-            self.brainslice_id = id
-
-            TissueSchm.BrainSliceBatch.insert1({'tissue_id': id,
-                                                     'slicing_orientation': slice_orientation,
-                                                     'thickness': slicethick,
-                                                     'animal_id': self.animal})
-            print ('Brain slice inserted, tissue id: ' + str(id))
+            animal.Eye.insert1({'animal_id':self.animal_id, 'side':self.retina_side})
+            djtissue.Tissue.insert1({'owner':user_name})
+            #get automatically assigned tissue id
+            self.retina_id = djtissue.Tissue.fetch('tissue_id', order_by='tissue_id desc', limit=1, as_dict=True)[0]
+            djtissue.retina.insert1({'tissue_id':self.retina_id, 'animal_id':self.animal_id,
+                                    'side':self.retina_side})
         return
 
-    def save_as_dict(self):
-        # Get the path to the current file's directory
-
-        # Define a path to the subfolder and file
-        filename = str(self.animal)+'_tissue.plk'
-        output_file = project_root / 'local' / filename
-
-        # Write something to the file
-        with open(output_file, 'wb') as f:
-            pickle.dump(self, f)
+    def save(self, as_dict = False):
+        #todo finish this
         return
 
-    def load_from_dict(self, animalid):
+    def downloader(self):
+        #todo
         return
 
-    def download_from_DJ(self, animal_id):
-        query_string = 'animal_id = ' + str(animal_id)
-        retina = TissueSchm.Retina & query_string
-        self.retina_id = retina.fetch(as_dict = True)['tissue_id']
+class brainSlice_tissue(animal):
+    brain_slice_id = None
+    slice_thickness = 0
+    slice_orientation = None
 
-        brainslice = TissueSchm.BrainSliceBatch & query_string
-        self.brainslice_id = brainslice.fetch(as_dict = True)['tissue_id']
+    def __init__(self, animal_id, thickness, orientation):
+        self.animal_id = animal_id
+        self.slice_thickness = thickness
+        if (orientation in ['Coronal', 'Saggital', 'Horizontal']):
+            self.slice_orientation = orientation
+        else:
+            Exception('Check your typo of slicing orientation!')
+        return
 
-        self.animal = animal_id
+    def uploader(self, user):
+        #check if repeated
+        qdic = {}
+        qdic['animal_id'] = self.animal_id
+
+        query = djtissue.BrainSliceBatch & qdic
+        result = query.fetch1('tissue_id')
+        if (bool(result)):
+            print('brain slice tissue already exists!')
+            self.brain_slice_id = result['tissue_id']
+        else:
+            #insert into sln_tissue.Tissue first
+            djtissue.Tissue.insert1({'owner':user})
+            self.brain_slice_id = djtissue.Tissue.fetch('tissue_id', order_by='tissue_id desc',
+                                                   limit=1, as_dict=True)[0]
+            djtissue.BrainSliceBatch.insert1({'tissue_id': self.brain_slice_id,
+                                              'slicing_orientation': self.slice_orientation,
+                                              'thickness': self.slice_thickness,
+                                             'animal_id':self.animal_id})
+        return
+
+    def downloader(self):
+        #todo fill this functon
         return
 
 
