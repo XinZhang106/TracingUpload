@@ -1,16 +1,16 @@
 import startup
 import pickle
-from pathlib import Path
+
 from startup import tissues as TissueSchm
 from startup import animals as AnimalSchm
+from startup import project_root
 
-project_root = Path(__file__).resolve().parent
-
-class tissue:
+class animal_basic_info:
+    animal = None
     brainslice_id = None
     retina_id = None
-    animal = None
 
+class tissue_operator(animal_basic_info):
     def __init__(self):
         return
 
@@ -20,7 +20,8 @@ class tissue:
 
     def insert_retina(self, retina_side, comment = None):
         qstr = 'animal_id = '+ str(self.animal)
-        query = TissueSchm.Retina() & qstr
+        qstr2 = 'side = ' + '"' + retina_side + '"'
+        query = TissueSchm.Retina() & qstr & qstr2
         result = query.fetch(as_dict=True)
         if (bool(result)):
             print('Retina already exists!')
@@ -74,7 +75,7 @@ class tissue:
         # Get the path to the current file's directory
 
         # Define a path to the subfolder and file
-        filename = str(self.animal)+'.plk'
+        filename = str(self.animal)+'_tissue.plk'
         output_file = project_root / 'local' / filename
 
         # Write something to the file
@@ -83,13 +84,18 @@ class tissue:
         return
 
     def load_from_dict(self, animalid):
-        filename = str(animalid) + '.plk'
-        inputfile = project_root/'local'/filename
-        with open(inputfile, 'rb') as f:
-            mydict = pickle.load(f)
-        self.animal =mydict.animal
-        self.brainslice_id =  mydict.brainslice_id
-        self.retina_id = mydict.retina_id
-        print('tissue loaded from file: ' + str(animalid)+'.plk')
-
         return
+
+    def download_from_DJ(self, animal_id):
+        query_string = 'animal_id = ' + str(animal_id)
+        retina = TissueSchm.Retina & query_string
+        self.retina_id = retina.fetch(as_dict = True)['tissue_id']
+
+        brainslice = TissueSchm.BrainSliceBatch & query_string
+        self.brainslice_id = brainslice.fetch(as_dict = True)['tissue_id']
+
+        self.animal = animal_id
+        return
+
+
+
