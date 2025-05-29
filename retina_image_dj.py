@@ -2,13 +2,13 @@ import pickle
 import roifile
 from PIL.Image import Image
 from os import path, listdir, remove
-from startup import project_root, retina_cut_ori, images, tissues, cell
+from startup import project_root, retina_cut_ori, djimage, djtissue, djcell
 import numpy as np
 from PIL import Image
 import pandas as pd
-from tissue_dj import animal_basic_info
+from tissue_dj import retina_tissue
 
-class rgc_image_manager(animal_basic_info):
+class rgc_image_manager(retina_tissue):
 
     image_id = None #id the of retina whole image
     cut_orientation = None
@@ -23,9 +23,9 @@ class rgc_image_manager(animal_basic_info):
     imaging_table = {'sdim_name_manual': [], 'sdim_id':[], 'zstack_name':[], 'zstack_id':[],
                      'cell_id':[], 'local_cell_id':[]}
 
-    def __init__(self, basic_info):
-        self.animal = basic_info.animal
-        self.retina_id = basic_info.retina_id
+    def __init__(self, retina_tissue):
+        self.animal = retina_tissue.animal
+        self.retina_id = retina_tissue.retina_id
         return
 
     def load_local(self):
@@ -39,7 +39,7 @@ class rgc_image_manager(animal_basic_info):
 
     def save(self):
         filename = str(self.animal)+'_wholeretina.plk'
-        output_file = project_root / 'local' / filename
+        output_file = self.local_folder/filename
         with open(output_file, 'wb') as f:
             pickle.dump(self, output_file)
         return
@@ -61,7 +61,7 @@ class rgc_image_manager(animal_basic_info):
     def assign_whole_retina(self, tissue_pickle, cut, imageid):
         self.cut_orientation = cut
         querystr = 'retina_id = '+str(self.retina_id)
-        query = images.WholeRetinaImage & querystr
+        query = djimage.WholeRetinaImage & querystr
         result = query.fetch(as_dict=True)
         if (bool(result)):
             print('Whole retina image already exists!')
@@ -69,7 +69,7 @@ class rgc_image_manager(animal_basic_info):
 
         insertDict = {'image_id' : imageid, 'tissue_id': self.retina_id,
                       'cut_orientation': cut}
-        images.WholeRetinaImage.insert1(insertDict)
+        djimage.WholeRetinaImage.insert1(insertDict)
 
         return
 
@@ -117,7 +117,7 @@ class rgc_image_manager(animal_basic_info):
         q = {'folder': confocal_upload_fd}
         for im in nd2ims:
             q['image_filename'] = im
-            query = images.Image & q
+            query = djimage.Image & q
             result = query.fetch1('image_id')
             if (bool(result)==False):
                 print('Cannot find image--'+str(path.join(confocal_upload_fd, im)))
@@ -127,7 +127,7 @@ class rgc_image_manager(animal_basic_info):
                 self.imaging_table['zstack_id'].append(result['image_id'])
                 cell_qeury = {}
                 cell_qeury['image_id'] = result['image_id']
-                result2 = images.RetinalCellImage & cell_qeury
+                result2 = djimage.RetinalCellImage & cell_qeury
                 self.imaging_table['cell_id'].append(result2['cell_unid'])
 
         if (output):
@@ -144,7 +144,7 @@ class rgc_image_manager(animal_basic_info):
         temp_id_ar = np.zeros([len(self.imaging_table['cell_id']),1])
         for i in range(len(self.imaging_table['cell_id'])):
             qstr = 'cell_unid = ' + str(self.imaging_table['cell_id'][i])
-            query = images.AxonInBrain & qstr
+            query = djimage.AxonInBrain & qstr
             result = query.fetch1('image_id')
             if (bool(result)):
                 temp_id_ar[i] = result['image_id']
@@ -163,7 +163,6 @@ class rgc_image_manager(animal_basic_info):
             df.to_csv(output_file, index = False)
 
         return
-
 
 
 

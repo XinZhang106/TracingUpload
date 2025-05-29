@@ -5,7 +5,15 @@ from os import listdir,path
 import re
 from startup import project_root, djimage, djtissue
 import tifffile
-from tissue_dj import brainSlice_tissue
+from tissue_dj import brainSlice_tissue, animal
+
+
+def euDis_point_linebypoints(x1, y1, x2, y2, x3, y3):
+    linevec = np.array([x2-x1, y2-y1])
+    dotT2ine = np.array([x3-x1, y3-y1])
+    #A X B  = |A| * |B| * sin(theta)
+    distance  = np.abs(np.cross(linevec, dotT2ine))/np.linalg.norm(linevec)
+    return distance
 
 class whole_brain_grouper(brainSlice_tissue):
     im_folder = None
@@ -30,6 +38,14 @@ class whole_brain_grouper(brainSlice_tissue):
             print('Must fill least animal id or import brain class!')
 
         return
+
+    def input_brain_per_slide(self, brain_num_array):
+        for i in range(0, len(brain_num_array)):
+            print('slide '+ str(i) + ' brain number: '+str(brain_num_array[i]))
+        self.brain_per_slide = brain_num_array
+        print('re run function if there is any mistake')
+        return
+
 
     def get_upload_list(self):
         allcontents = listdir(self.im_folder)
@@ -100,7 +116,7 @@ class whole_brain_grouper(brainSlice_tissue):
             elif (objname == 'ml2'):
                 self.sdim_list[imagename]['midline'][1, :] = np.array([df['Centroid X'][i], df['Centroid Y'][i]])
             elif (objname.contains('t')):
-                self.sdim_list[imagename]['terminals'].append([df['Centrois X'][i], df['Centroid Y'][i]])
+                self.sdim_list[imagename]['terminals'].append(np.array([df['Centrois X'][i], df['Centroid Y'][i], df['Perimeter ']]))
             else:
                 Exception('Annotation object name cannot be recogenized!')
                 return
@@ -108,9 +124,9 @@ class whole_brain_grouper(brainSlice_tissue):
 
     def save_parsed_annotation(self):
         all_ims = self.im_list.keys()
-        flat_dict = {'index':[],'Image_name': [], 'ML1x':[], 'ML1y':[],
-                     'ML2x':[], 'ML2y':[], 'centroid_x':[], 'centroid_y':[], 'multi_terminal':[],
-                     'slide_num': [], 'brain_num':[]}
+        flat_dict = {'index':[],'Image_name': [], 'ml':[],
+                     'centroid_x':[], 'centroid_y':[], 'multi_terminal':[],
+                     'ap': []}
         idx = 0
         for im in all_ims:
             #iteration through all images
@@ -124,12 +140,18 @@ class whole_brain_grouper(brainSlice_tissue):
                 flat_dict['Image_name'].append(im)
                 flat_dict['index'].append(idx)
                 idx +=1
-                flat_dict['ML1x'].append(im_item['midline'][0, 0])
-                flat_dict['ML1y'].append(im_item['midline'][0, 1])
-                flat_dict['ML2x'].append(im_item['midline'][1, 0])
-                flat_dict['ML2y'].append(im_item['midline'][1, 1])
+                ml = self.calculate_ML(im_item['midline'], im_item['terminals'])
+                flat_dict['ml'].append(ml)
+
+                wb_index = self.whole_brain_data['im_name_list'].index(im)
+                slide_num = self.whole_brain_data['slide_num'][wb_index]
+                brain_num = self.whole_brain_data['brain_num'][wb_index]
+                ap = self.calculate_AP(slide_num, brain_num)
+                flat_dict['ap'].append(ap)
+
                 flat_dict['centroid_x'].append(im_item['terminals'][i][0])
                 flat_dict['centroid_y'].append(im_item['terminals'][i][1])
+                flat_dict['centroid_radius'].append(im_item['terminals'][i][2]/6.28)
                 flat_dict['multi_terminal'].append(multi_flag)
 
         df = pd.DataFrame(flat_dict)
@@ -138,10 +160,8 @@ class whole_brain_grouper(brainSlice_tissue):
         df.to_csv(path, index = False)
         return
 
-
-
     def save(self, as_csv = False):
-        #todo solve this
+
         if (as_csv == True):
             df = pd.DataFrame(self.whole_brain_data)
             file_name = str(self.animal)+'_wholeBrain_ref_id.csv'
@@ -154,25 +174,68 @@ class whole_brain_grouper(brainSlice_tissue):
                 pickle.dump(self, f)
             print('Whole brain saved as: ' + str(inputfile))
         return
-
-    def calculate_AP(self):
-        query['tissue_id'] = self.
         return
 
-    def calculate_ML(self):
+    def calculate_AP(self, slide_num, brain_num):
+        prev_brain = brain_num
+        for i in range(slide_num):
+            prev_brain+=self.brain_per_slide[i]
+        ap = prev_brain * self.slice_thickness
+        return ap
+
+    def calculate_ML(self, midline_ps, centroid):
+        euDis_point_linebypoints(midline_ps[0,0], midline_ps[0,1],
+                                 midline_ps[1,0], midline_ps[1,1],
+                                 centroid[0], centroid[1])
+        return
+
+class sd_im_grouper(animal):
+    sd_base_folder = None
+    sd_table = None
+    def __init__(self, animalid, sd_base_folder):
+        self.animal_id = animalid
+        self.sd_base_folder = sd_base_folder
+        return
+
+    def load_sd_table(self):
+        filename = str(self.animal_id)+'_parsed_annotation.csv'
+        path = self.local_folder/filename
+        self.sd_table = pd.read_csv(path,index_col=None)
+        return
+
+    def fill_table(self):
+        im_name_list = []
+        sd_fd = [path.join(self.sd_base_folder, a) for a in listdir(self.sd_base_folder)]
+        for i in range(len(sd_fd)):
+            nd2 = [a for a in listdir(sd_fd[i]) if a.endswith('.nd2')]
+            im_name_list.append(nd2[0])
+
+        self.sd_table['image_name'] = im_name_list
+        maskfd = [path.join(fd, 'mask.tif') for fd in sd_fd]
+        self.sd_table['maskpath'] = maskfd
+        return
+
+    def download_image_id_to_table(self, original_folder):#input the folder where uploading into sln_image.Image happened
+        image_id_list = []
+        for i in range(len(self.sd_table)):
+            qdict = {}
+            qdict['image_filename'] = self.sd_table['Image_name'][i]
+            qdict['folder'] = original_folder
+            query = djimage.Image & qdict
+            result = query.fetch1('image_id')
+            if (bool(result)):
+                image_id_list.append(result['image_id'])
+            else:
+                image_id_list.append(None)
+
+        self.sd_table['image_id'] = image_id_list
+        return
+
+    def upload_sd_im(self):
+        #todo
         return
 
 
-class annotation_parse(animal_basic_info):
-    im_list = {}
-
-
-
-
-
-
-#spinning disk brain is mostly dealt in matlab
-#class spinningDisk_brain:
 
 
 
