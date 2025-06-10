@@ -58,7 +58,7 @@ class rgc_image_manager(retina_tissue):
     #         self.retina_id = result['tissue_id']
     #     return
 
-    def assign_whole_retina(self, tissue_pickle, cut, imageid):
+    def assign_whole_retina(self, cut, imageid):
         self.cut_orientation = cut
         querystr = 'retina_id = '+str(self.retina_id)
         query = djimage.WholeRetinaImage & querystr
@@ -107,10 +107,12 @@ class rgc_image_manager(retina_tissue):
         dorsalroi = roifile.ImagejRoi.fromfile(path.join(anno_Folder, 'dorsal.roi'))
         self.dorsal = dorsalroi.coordinates()
 
-        rgc = pd.read_csv(path.join(anno_Folder, 'rgc.csv'), header = None)
-        self.raw_rgc_coord = rgc.to_numpy()
+        rgc = pd.read_csv(path.join(anno_Folder, 'rgc.csv'), header = 0, index_col=0)
+        self.raw_rgc_coord = rgc[['X', 'Y']].to_numpy()
+
         self.rotated_rgc_coord = self.rotate_rgc()
         return
+
 
     def get_confocal_cell_id(self, confocal_upload_fd, output = True):
         nd2ims = [im for im in listdir(confocal_upload_fd) if im.endswith('.nd2')]

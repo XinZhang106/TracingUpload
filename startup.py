@@ -18,4 +18,4 @@ djlab = dj.create_virtual_module('djlab', 'sln_lab')
 djcell = dj.create_virtual_module('djcell', 'sln_cell')
 
 #class for safe uploading/reloading of a new tissue collection
-
+print('Starting up datajoint, connected as ' + dj.config['database.user'])

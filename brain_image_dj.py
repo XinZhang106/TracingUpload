@@ -1,12 +1,11 @@
 import pandas as pd
 import numpy as np
 import pickle
-from os import listdir,path
+from os import listdir, path, mkdir
 import re
 from startup import project_root, djimage, djtissue
 import tifffile
 from tissue_dj import brainSlice_tissue, animal
-
 
 def euDis_point_linebypoints(x1, y1, x2, y2, x3, y3):
     linevec = np.array([x2-x1, y2-y1])
@@ -17,42 +16,51 @@ def euDis_point_linebypoints(x1, y1, x2, y2, x3, y3):
 
 class whole_brain_grouper(brainSlice_tissue):
     im_folder = None
-    whole_brain_data = {'im_name_list':[], 'image_ref_id_list':[],
+    whole_brain_data = {'im_name_list':[], 'im_ref_id_list':[],
                         'slide_num':[], 'brain_num':[]}
     brain_per_slide = []
 
-    def __init__(self, im_folder, animal_id = None, brain= None):
+    def __init__(self, im_folder, animal_id, brain= None):
         self.im_folder = im_folder
-        if (brain):
+        self.animal_id = animal_id
+        self.local_folder = project_root/'local'/str(self.animal_id)
+        if (path.exists(self.local_folder)==False):
+            mkdir(self.local_folder)
+
+        if (bool(brain)):
             self.animal_id = brain.animal_id
             self.slice_thickness = brain.slice_thickness
             self.brain_slice_id = brain.brain_slice_id
-        elif(animal_id):
+        else:
             qstr = 'animal_id = '+str(animal_id)
             query = djtissue.BrainSliceBatch & qstr
             result = query.fetch1('tissue_id', 'thickness')
-            self.slice_thickness = result['thickness']
-            self.brain_slice_id = result['tissue_id']
-            #download from datajoint
-        else:
-            print('Must fill least animal id or import brain class!')
-
+            if (len(result)>0):
+                self.brain_slice_id = result[0]
+                self.slice_thickness = result[1]
+            else:
+                print('Cannot find brain slice batch of animal: '+ str(self.animal_id))
+                Exception()
+                return
         return
 
     def input_brain_per_slide(self, brain_num_array):
         for i in range(0, len(brain_num_array)):
+            if (isinstance(brain_num_array[i], int)!=True):
+                print('Brain number per slice must be integer!')
+                Exception()
+
             print('slide '+ str(i) + ' brain number: '+str(brain_num_array[i]))
         self.brain_per_slide = brain_num_array
         print('re run function if there is any mistake')
         return
 
-
     def get_upload_list(self):
         allcontents = listdir(self.im_folder)
         self.whole_brain_data['im_name_list'] = [c for c in allcontents if c.endswith('.nd2')]
-        self.whole_brain_data['image_ref_id_list'] = np.zeros([len(self.im_name_list),1])
+
         myfilter = r'_s(\d+)_b(\d+)_'
-        for im in self.im_name_list:
+        for im in self.whole_brain_data['im_name_list']:
             match = re.search(myfilter, im)
             if match:
                 slide = match.group(1)
@@ -64,36 +72,63 @@ class whole_brain_grouper(brainSlice_tissue):
                 self.whole_brain_data['slide_num'] = []
                 self.whole_brain_data['brain_num'] = []
                 self.whole_brain_data['im_name_list'] = []
-                self.whole_brain_data['im_name_list'] = []
                 self.whole_brain_data['im_ref_id_list'] = []
                 Exception('Can not process whole brain image file: '+ im)
         return
 
-    def upload_whole_brain(self):
-        qstr = 'tissue_id = ' + self.brain_slice_id
+    def upload_whole_brain(self): #either upload the whole_brain_data dictionary or getting ref_image_id back if already loaded
+        qstr = 'tissue_id = ' + str(self.brain_slice_id)
         query = djimage.WholeBrainImage & qstr
         result = query.fetch(as_dict = True)
-        if (bool(result)):
-            Exception('whole brain images already loaded!')
+        if (len(result) == self.whole_brain_data['im_name_list']):
+            print('Whole brain reference image uploaded, downloading ref_image_id instead...')
+
+        elif(len(result)==0):
+            print('No whole brain images have been uploaded, uploading now...')
+            for i in range(len(self.whole_brain_data['im_name_list'])):
+                uploadDict = {'tissue_id': self.brain_slice_id,
+                              'file_name': self.whole_brain_data['im_name_list'][i],
+                              'folder': self.local_folder,
+                              'slide_num': self.whole_brain_data['slide_num'][i],
+                              'brain_num': self.whole_brain_data['brain_num'][i]}
+                djimage.WholeBrainImage.insert1(uploadDict)
+
         else:
-            for i in range(self.whole_brain_data['im_name_list']):
+            print('whole brain image partially uploaded, delete and re-upload to prevent errors...')
+            cleanup = djimage.WholeBrainImage & qstr
+            cleanup.delete()
+
+            for i in range(len(self.whole_brain_data['im_name_list'])):
                 uploadDict = {'tissue_id': self.brain_slice_id,
                               'file_name': self.whole_brain_data['im_name_list'][i],
                               'folder': self.local_folder,
                               'slide_num': self.whole_brain_data['slide_num'][i],
                               'brain_num': self.whole_brain_data['brain_num'][i]}
 
+                djimage.WholeBrainImage.insert1(uploadDict)
 
-            djimage.WholeBrainImage.insert1(uploadDict)
-
+        self.download_whole_brain_id()
         # fetch the automatcially generated image ref ids after uploading
-        new_ids_dictlis = djimage.WholeBrainImage.fetch('ref_image_id', order_by = 'ref_image_id desc',
-                                                                  limist = len(self.image_ref_id_list), as_dict = True)
-        self.whole_brain_data['image_ref_id_list'] = [a['ref_image_id'] for a in new_ids_dictlis]
         return
 
-    def down_load_whole_brain(self):
-        #todo
+    def save_whole_brain_imInfo(self):
+        filename = 'whole_brain_refid.csv'
+        filepath = self.local_folder/filename
+        df = pd.DataFrame(self.whole_brain_data)
+        df.to_csv(filepath)
+        return
+
+    def download_whole_brain_id(self):
+        self.whole_brain_data['im_ref_id_list'] = np.zeros([len(self.whole_brain_data['im_name_list']), 1])
+        querydict = {'tissue_id': self.brain_slice_id}
+        query = djimage.WholeBrainImage & querydict
+        new_ids_dictlis = query.fetch('ref_image_id', 'file_name',
+                                                        limit=len(self.whole_brain_data['im_name_list']), as_dict=True)
+        for i in range(len(new_ids_dictlis)):
+            pair = new_ids_dictlis[i]
+            id_index = self.whole_brain_data['im_name_list'].index(pair['file_name'])
+            self.whole_brain_data['im_ref_id_list'][id_index] = pair['ref_image_id']
+
         return
 
     def parse_qupath_annotation(self, qupath_csv, whole_brain_data):
@@ -160,21 +195,6 @@ class whole_brain_grouper(brainSlice_tissue):
         df.to_csv(path, index = False)
         return
 
-    def save(self, as_csv = False):
-
-        if (as_csv == True):
-            df = pd.DataFrame(self.whole_brain_data)
-            file_name = str(self.animal)+'_wholeBrain_ref_id.csv'
-            inputfile = self.local_folder/file_name
-            df.to_csv(index=False)
-        else:
-            filename = str(self.animal) + '_wholeBrain.plk'
-            inputfile = self.local_folder / filename
-            with open(inputfile, 'wb') as f:
-                pickle.dump(self, f)
-            print('Whole brain saved as: ' + str(inputfile))
-        return
-        return
 
     def calculate_AP(self, slide_num, brain_num):
         prev_brain = brain_num
