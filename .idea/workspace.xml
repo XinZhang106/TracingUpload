@@ -5,13 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="97270d16-6d97-47cb-8521-fe0a8800a45c" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/test_run.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/retina_recon.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Axon.py" beforeDir="false" afterPath="$PROJECT_DIR$/Axon.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/AxonMapper.py" beforeDir="false" afterPath="$PROJECT_DIR$/AxonMapper.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/brain_image_dj.py" beforeDir="false" afterPath="$PROJECT_DIR$/brain_image_dj.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dataPipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/dataPipeline.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/retina_image_dj.py" beforeDir="false" afterPath="$PROJECT_DIR$/retina_image_dj.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/startup.py" beforeDir="false" afterPath="$PROJECT_DIR$/startup.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tissue_dj.py" beforeDir="false" afterPath="$PROJECT_DIR$/tissue_dj.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_run.py" beforeDir="false" afterPath="$PROJECT_DIR$/test_run.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,6 +42,9 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "Python tests.Doctests in connection.executor": "Run",
+    "Python.Image.executor": "Run",
+    "Python.retina_recon.executor": "Run",
+    "Python.startup.executor": "Run",
     "Python.test.executor": "Debug",
     "Python.test_run.executor": "Debug",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -72,25 +75,31 @@
     </task>
     <servers />
   </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/brain_image_dj.py</url>
-          <line>115</line>
-          <option name="timeStamp" value="3" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/brain_image_dj.py</url>
-          <line>129</line>
-          <option name="timeStamp" value="4" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/brain_image_dj.py</url>
-          <line>96</line>
-          <option name="timeStamp" value="5" />
+          <line>117</line>
+          <option name="timeStamp" value="2" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+    <watches-manager>
+      <configuration name="PythonConfigurationType">
+        <watch expression="df = {DataFrame: (9, 9)} ['index', 'Image_name', 'ml', 'centroid_x', 'centroid_y', 'centroid_radius', 'multi_terminal', 'ap', 'Map'] [0      0  3534_whole_s2_b3_408_488_594_108.nd2  ...  2200    0] [1      1  3534_whole_s3_b3_408_488_594_116.nd2  ...  2700    0] [2      2  3534_wh...View as DataFrame" language="Python" />
+      </configuration>
+    </watches-manager>
   </component>
 </project>

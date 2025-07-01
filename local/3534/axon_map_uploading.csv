@@ -1,0 +1,4 @@
+sd_im_djid_s,sd_im_local_index,axon_local_id,axon_djid,brain region,side,RGC_local_id,cell_unid
+714,1,1,4,SCs,Contralateral,nan,nan
+715,3,2,1,SCs,Contralateral,2,10594
+"716, 717","6, 8",3,2,SCs,Contralateral,3,10595

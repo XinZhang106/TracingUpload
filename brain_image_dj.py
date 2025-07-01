@@ -1,10 +1,12 @@
+import os.path
+
 import pandas as pd
 import numpy as np
 import pickle
 from os import listdir, path, mkdir
 import re
 from startup import project_root, djimage, djtissue
-import tifffile
+import tifffile, nd2
 from tissue_dj import brainSlice_tissue, animal
 
 def euDis_point_linebypoints(x1, y1, x2, y2, x3, y3):
@@ -12,6 +14,7 @@ def euDis_point_linebypoints(x1, y1, x2, y2, x3, y3):
     dotT2ine = np.array([x3-x1, y3-y1])
     #A X B  = |A| * |B| * sin(theta)
     distance  = np.abs(np.cross(linevec, dotT2ine))/np.linalg.norm(linevec)
+    #print(dis)
     return distance
 
 class whole_brain_grouper(brainSlice_tissue):
@@ -28,9 +31,9 @@ class whole_brain_grouper(brainSlice_tissue):
             mkdir(self.local_folder)
 
         if (bool(brain)):
-            self.animal_id = brain.animal_id
+            self.animal_id = animal_id
             self.slice_thickness = brain.slice_thickness
-            self.brain_slice_id = brain.brain_slice_id
+            self.brain_slice_id = brain
         else:
             qstr = 'animal_id = '+str(animal_id)
             query = djtissue.BrainSliceBatch & qstr
@@ -38,6 +41,7 @@ class whole_brain_grouper(brainSlice_tissue):
             if (len(result)>0):
                 self.brain_slice_id = result[0]
                 self.slice_thickness = result[1]
+                print('Getting brain id from DJ, branslicebatch id: ' + str(self.brain_slice_id))
             else:
                 print('Cannot find brain slice batch of animal: '+ str(self.animal_id))
                 Exception()
@@ -50,7 +54,7 @@ class whole_brain_grouper(brainSlice_tissue):
                 print('Brain number per slice must be integer!')
                 Exception()
 
-            print('slide '+ str(i) + ' brain number: '+str(brain_num_array[i]))
+            print('slide '+ str(i+1) + ' brain number: '+str(brain_num_array[i]))
         self.brain_per_slide = brain_num_array
         print('re run function if there is any mistake')
         return
@@ -59,7 +63,7 @@ class whole_brain_grouper(brainSlice_tissue):
         allcontents = listdir(self.im_folder)
         self.whole_brain_data['im_name_list'] = [c for c in allcontents if c.endswith('.nd2')]
 
-        myfilter = r'_s(\d+)_b(\d+)_'
+        myfilter = r's(\d+)_b(\d+)'
         for im in self.whole_brain_data['im_name_list']:
             match = re.search(myfilter, im)
             if match:
@@ -82,21 +86,13 @@ class whole_brain_grouper(brainSlice_tissue):
         result = query.fetch(as_dict = True)
         if (len(result) == self.whole_brain_data['im_name_list']):
             print('Whole brain reference image uploaded, downloading ref_image_id instead...')
-
-        elif(len(result)==0):
-            print('No whole brain images have been uploaded, uploading now...')
-            for i in range(len(self.whole_brain_data['im_name_list'])):
-                uploadDict = {'tissue_id': self.brain_slice_id,
-                              'file_name': self.whole_brain_data['im_name_list'][i],
-                              'folder': self.local_folder,
-                              'slide_num': self.whole_brain_data['slide_num'][i],
-                              'brain_num': self.whole_brain_data['brain_num'][i]}
-                djimage.WholeBrainImage.insert1(uploadDict)
-
         else:
-            print('whole brain image partially uploaded, delete and re-upload to prevent errors...')
-            cleanup = djimage.WholeBrainImage & qstr
-            cleanup.delete()
+            if (len(result) == 0):
+                print('No whole brain images have been uploaded, uploading now...')
+            else:
+                #todo check BUG!
+                #djimage.WholeBrainImage.delete(qstr)
+                Exception('whole brain image partially uploaded, please check!')
 
             for i in range(len(self.whole_brain_data['im_name_list'])):
                 uploadDict = {'tissue_id': self.brain_slice_id,
@@ -106,7 +102,6 @@ class whole_brain_grouper(brainSlice_tissue):
                               'brain_num': self.whole_brain_data['brain_num'][i]}
 
                 djimage.WholeBrainImage.insert1(uploadDict)
-
         self.download_whole_brain_id()
         # fetch the automatcially generated image ref ids after uploading
         return
@@ -115,7 +110,7 @@ class whole_brain_grouper(brainSlice_tissue):
         filename = 'whole_brain_refid.csv'
         filepath = self.local_folder/filename
         df = pd.DataFrame(self.whole_brain_data)
-        df.to_csv(filepath)
+        df.to_csv(filepath, index= False)
         return
 
     def download_whole_brain_id(self):
@@ -129,9 +124,10 @@ class whole_brain_grouper(brainSlice_tissue):
             id_index = self.whole_brain_data['im_name_list'].index(pair['file_name'])
             self.whole_brain_data['im_ref_id_list'][id_index] = pair['ref_image_id']
 
+        self.whole_brain_data['im_ref_id_list'] = self.whole_brain_data['im_ref_id_list'].flatten()
         return
 
-    def parse_qupath_annotation(self, qupath_csv, whole_brain_data):
+    def parse_qupath_annotation(self, qupath_csv):
         self.sdim_list = {}
         df = pd.read_csv(qupath_csv)
         annotated_image = set(df['Image'])
@@ -141,31 +137,52 @@ class whole_brain_grouper(brainSlice_tissue):
             self.sdim_list[cleanName] = {'midline': np.zeros([2, 2]),
                                        'terminals':[]}
 
-        for i in range(len(df)):
-            imagename = df.iloc['Image'][i].split("-")[0].strip()
-            objname = df.iloc['Name'][i].strip()
-            wb_idx = whole_brain_data['im_name_list'].index(imagename)
+        totalrows = len(df)
+        for i in range(0, totalrows):
+            imagename = df['Image'][i].split("-")[0].strip()
+            objname = df['Name'][i].strip()
+            #wb_idx = self.whole_brain_data['im_name_list'].index(imagename)
 
-            if (objname == 'ml1'):
-                self.sdim_list[imagename]['midline'][0, :] = np.array([df['Centroid X'][i], df['Centroid Y'][i]])
-            elif (objname == 'ml2'):
-                self.sdim_list[imagename]['midline'][1, :] = np.array([df['Centroid X'][i], df['Centroid Y'][i]])
-            elif (objname.contains('t')):
-                self.sdim_list[imagename]['terminals'].append(np.array([df['Centrois X'][i], df['Centroid Y'][i], df['Perimeter ']]))
+            if ('ml1' in objname):
+                self.sdim_list[imagename]['midline'][0,0] = df['Centroid X'][i]
+                self.sdim_list[imagename]['midline'][0,1] = df['Centroid Y'][i]
+                #self.sdim_list[cleanName]['midline'][0, :] = np.array([df['Centroid X'][i], df['Centroid Y'][i]])
+            elif ('ml2' in objname):
+                self.sdim_list[imagename]['midline'][1,0] = df['Centroid X'][i]
+                self.sdim_list[imagename]['midline'][1,1] = df['Centroid Y'][i]
+                #self.sdim_list[cleanName]['midline'][1, :] = np.array([df['Centroid X'][i], df['Centroid Y'][i]])
+            elif ('t' in objname):
+                terminal = np.zeros([3,1]).flatten()
+                terminal[0] = df['Centroid X'][i]
+                terminal[1] = df['Centroid Y'][i]
+                terminal[2] = df['Perimeter'][i]
+                #terminal = np.array([df['Centroid X'][i], df['Centroid Y'][i], df['Perimeter']])
+                self.sdim_list[imagename]['terminals'].append(terminal)
             else:
-                Exception('Annotation object name cannot be recogenized!')
-                return
+                raise Exception('Annotation object name cannot be recogenized!')
+
         return
 
-    def save_parsed_annotation(self):
-        all_ims = self.im_list.keys()
+        #check if every image has at least two midline point
+        allims = self.sdim_list.keys()
+
+        for im in allims:
+            midpoints = self.sdim_list[im]['midline']
+            if (0 in midpoints):
+                print('Warning: image ' + str(im) + 'is not being processed correctly: midline missing!')
+
+        return
+
+    def save_parsed_annotation(self, slicing_PtoA = True):
+        all_ims = self.sdim_list.keys()
         flat_dict = {'index':[],'Image_name': [], 'ml':[],
-                     'centroid_x':[], 'centroid_y':[], 'multi_terminal':[],
+                     'centroid_x':[], 'centroid_y':[],
+                     'centroid_radius':[], 'multi_terminal':[],
                      'ap': []}
         idx = 0
         for im in all_ims:
             #iteration through all images
-            im_item = all_ims[im]
+            im_item = self.sdim_list[im]
             if (len(im_item['terminals'])>1):
                 multi_flag = 1
             else:
@@ -175,64 +192,72 @@ class whole_brain_grouper(brainSlice_tissue):
                 flat_dict['Image_name'].append(im)
                 flat_dict['index'].append(idx)
                 idx +=1
-                ml = self.calculate_ML(im_item['midline'], im_item['terminals'])
-                flat_dict['ml'].append(ml)
 
                 wb_index = self.whole_brain_data['im_name_list'].index(im)
                 slide_num = self.whole_brain_data['slide_num'][wb_index]
                 brain_num = self.whole_brain_data['brain_num'][wb_index]
-                ap = self.calculate_AP(slide_num, brain_num)
+                ap = self.calculate_AP(slide_num, brain_num, slicing_PtoA)
                 flat_dict['ap'].append(ap)
 
-                flat_dict['centroid_x'].append(im_item['terminals'][i][0])
-                flat_dict['centroid_y'].append(im_item['terminals'][i][1])
-                flat_dict['centroid_radius'].append(im_item['terminals'][i][2]/6.28)
+                this_terminal  = im_item['terminals'][i]
+                flat_dict['centroid_x'].append(this_terminal[0])
+                flat_dict['centroid_y'].append(this_terminal[1])
+                flat_dict['centroid_radius'].append(this_terminal[2]/6.28)
                 flat_dict['multi_terminal'].append(multi_flag)
+
+                ml = self.calculate_ML(im_item['midline'], this_terminal)
+                flat_dict['ml'].append(ml)
 
         df = pd.DataFrame(flat_dict)
         filename = str(self.animal_id)+'_parsed_annotation.csv'
-        path = self.local_folder/filename
-        df.to_csv(path, index = False)
+        outputpath = self.local_folder/filename
+        if (os.path.exists(outputpath)):
+            os.remove(outputpath)
+        df.to_csv(outputpath, index = False)
         return
 
 
-    def calculate_AP(self, slide_num, brain_num):
-        prev_brain = brain_num
-        for i in range(slide_num):
-            prev_brain+=self.brain_per_slide[i]
+    def calculate_AP(self, slide_num, brain_num, slicing_backwards = True):
+        prev_brain = int(brain_num)
+        if (slide_num !=1):
+            for i in range(int(slide_num)-1):
+                prev_brain += self.brain_per_slide[i]
+
         ap = prev_brain * self.slice_thickness
-        return ap
+        if (slicing_backwards):
+            return -ap
+        else:
+            return ap
 
     def calculate_ML(self, midline_ps, centroid):
-        euDis_point_linebypoints(midline_ps[0,0], midline_ps[0,1],
+        distance = euDis_point_linebypoints(midline_ps[0,0], midline_ps[0,1],
                                  midline_ps[1,0], midline_ps[1,1],
                                  centroid[0], centroid[1])
-        return
+        return distance
 
 class sd_im_grouper(animal):
     sd_base_folder = None
     sd_table = None
+    #uploading of spinning disk axon image is done in matlab
+    
     def __init__(self, animalid, sd_base_folder):
         self.animal_id = animalid
         self.sd_base_folder = sd_base_folder
         return
 
-    def load_sd_table(self):
+    def load_whole_parse_table(self):
         filename = str(self.animal_id)+'_parsed_annotation.csv'
         path = self.local_folder/filename
-        self.sd_table = pd.read_csv(path,index_col=None)
+        self.sd_table = pd.read_csv(path,index_col = 0)
         return
 
     def fill_table(self):
-        im_name_list = []
-        sd_fd = [path.join(self.sd_base_folder, a) for a in listdir(self.sd_base_folder)]
-        for i in range(len(sd_fd)):
-            nd2 = [a for a in listdir(sd_fd[i]) if a.endswith('.nd2')]
-            im_name_list.append(nd2[0])
 
-        self.sd_table['image_name'] = im_name_list
-        maskfd = [path.join(fd, 'mask.tif') for fd in sd_fd]
-        self.sd_table['maskpath'] = maskfd
+
+        return
+
+    def assign_sdIm_toAxonIm(self):
+        #todo
         return
 
     def download_image_id_to_table(self, original_folder):#input the folder where uploading into sln_image.Image happened
@@ -251,8 +276,15 @@ class sd_im_grouper(animal):
         self.sd_table['image_id'] = image_id_list
         return
 
-    def upload_sd_im(self):
+    def upload_shifted_tif(self, nd2p, tifp, maskp):
         #todo
+        uploadingDict = {}
+        uploadingDict['image_filename'] = tifp
+        uploadingDict['folder'] = os.path.dirname(tifp)
+
+
+        with nd2.ND2File(nd2p) as originalfile:
+            metadata = originalfile.metadata
         return
 
 
