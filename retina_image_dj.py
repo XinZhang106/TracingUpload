@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import os
 from PIL.Image import Image
 from os import path, listdir, remove
+
+from numpy.f2py.crackfortran import endifs
+
 from startup import project_root, retina_cut_ori, djimage, djtissue, djcell
 import numpy as np
 from PIL import Image
@@ -50,19 +53,19 @@ class rgc_image_manager(retina_tissue):
             pickle.dump(self, output_file)
         return
 
-    # def download_from_dj(self, animal_id, side):
-    #     qstr = 'animal_id = ' + str(animal_id)
-    #     qstr2 = 'side = "' + side + '"'
-    #     query = images.WholeRetinaImage & qstr & qstr2
-    #     result = query.fetch(as_dict = True)
-    #     if (bool(result)==False):
-    #         print('Retina not in the database please upload first!')
-    #     else:
-    #         self.image_id = result['image_id']
-    #         self.side = side
-    #         self.cut_orientation = result['cut_orientation']
-    #         self.retina_id = result['tissue_id']
-    #     return
+    def download_from_dj(self, animal_id, side):
+        qstr = 'animal_id = ' + str(animal_id)
+        qstr2 = 'side = "' + side + '"'
+        query = djimage.WholeRetinaImage & qstr & qstr2
+        result = query.fetch(as_dict = True)
+        if (bool(result)==False):
+            print('Retina not in the database please upload first!')
+        else:
+            self.image_id = result['image_id']
+            self.side = side
+            self.cut_orientation = result['cut_orientation']
+            self.retina_id = result['tissue_id']
+        return
 
     def assign_whole_retina(self, cut, imageid):
 
@@ -155,21 +158,29 @@ class rgc_image_manager(retina_tissue):
             self.rotated_rgc_coord = self.rotate_rgc()
         return
 
-    def load_wf_anno(self, annocsv):
-        #the annotation files contains two column: 'X' and 'Y'.
-        #the first row is opn coordinate, second is a point on the cut, and rest are cell coordinates
-        df = pd.read_csv(annocsv)
-        self.opn[0] = df['X'][0], self.opn[1] = df['Y'][0]
-        self.dorsal[0] = df['Y'][0], self.dorsal[1] = df['Y'][1]
-        self.raw_rgc_coord = np.zeros([len(df)-2, 2])
-        self.raw_rgc_coord[0, :] = df['X'][2:]
-        self.raw_rgc_coord[1, :] = df['Y'][2:]
-        return
 
-    def spinningdisk_upload(self, fpList):
-        #todo finish uploading function
-        return
+    def prep_uploading_form(self, sd_base_folder, color_shift = False):
+        subfds = [path.join(sd_base_folder, f) for f in listdir(sd_base_folder)]
 
+        image_list = []
+        for fd in subfds:
+            filelist = listdir(fd)
+            if (color_shift == False):
+                file = [f for f in filelist if f.endswith('.nd2')]
+                file = file[0]
+            else:
+                tifs = [f for f in filelist if f.endswith('.tif')]
+                for t in tifs:
+                    if (t != 'mask.tif'):
+                        file = t
+
+                image_list.append(path.join(fd,file))
+
+        df = pd.DataFrame({'filename': image_list})
+        uploadfilepath = project_root/'local'/str(self.animal_id)/'retina_sd_uploadlist.csv'
+        df.to_csv(uploadfilepath, index= False)
+        print('uploadign sd form prepared, now input cell ids manually...')
+        return
 
 
     def get_confocal_cell_id(self, confocal_upload_fd, output = True):
@@ -225,19 +236,15 @@ class rgc_image_manager(retina_tissue):
 
         return
 
+def main():
+    retina = retina_tissue(3658, 'left')
+    retina.retina_id = 160
+    rgc_im = rgc_image_manager(retina)
 
+    rgc_im.prep_uploading_form(r"D:\localData\chromaTrace\3658\retina_sd", True)
+    return
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+#testing code
+if __name__ == "__main__":
+    main()
 

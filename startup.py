@@ -6,6 +6,8 @@ dj.config["database.host"] = "vfsmdatajoint01.fsm.northwestern.edu"
 dj.config["database.user"] = "Xin"
 dj.config["database.password"] = "Xin_temppwd"
 dj.conn()
+raw_storage = {'external-raw': dict(protocol = 'file', location = r'R:\Ophthalmology\Research\SchwartzLab\Datajoint\raw')}
+dj.config['stores'] = raw_storage
 
 brainslice_ori = ['Coronal', 'Vertical', 'Horizontal', 'Unknown']
 retina_cut_ori = ['Dorsal', 'Ventral', 'Nasal', 'Temporal', 'Unknown']

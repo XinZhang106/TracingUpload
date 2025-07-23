@@ -17,6 +17,8 @@ def euDis_point_linebypoints(x1, y1, x2, y2, x3, y3):
     #print(dis)
     return distance
 
+
+
 class whole_brain_grouper(brainSlice_tissue):
     im_folder = None
     whole_brain_data = {'im_name_list':[], 'im_ref_id_list':[],
@@ -27,6 +29,10 @@ class whole_brain_grouper(brainSlice_tissue):
         self.im_folder = im_folder
         self.animal_id = animal_id
         self.local_folder = project_root/'local'/str(self.animal_id)
+        if (path.exists(im_folder)==False):
+            print('Cannot find whole brain image folder: ')
+            Exception()
+            return
         if (path.exists(self.local_folder)==False):
             mkdir(self.local_folder)
 
@@ -41,23 +47,13 @@ class whole_brain_grouper(brainSlice_tissue):
             if (len(result)>0):
                 self.brain_slice_id = result[0]
                 self.slice_thickness = result[1]
-                print('Getting brain id from DJ, branslicebatch id: ' + str(self.brain_slice_id))
+                print('Getting brain id from DJ, brain slice batch id: ' + str(self.brain_slice_id))
             else:
                 print('Cannot find brain slice batch of animal: '+ str(self.animal_id))
                 Exception()
                 return
         return
 
-    def input_brain_per_slide(self, brain_num_array):
-        for i in range(0, len(brain_num_array)):
-            if (isinstance(brain_num_array[i], int)!=True):
-                print('Brain number per slice must be integer!')
-                Exception()
-
-            print('slide '+ str(i+1) + ' brain number: '+str(brain_num_array[i]))
-        self.brain_per_slide = brain_num_array
-        print('re run function if there is any mistake')
-        return
 
     def get_upload_list(self):
         allcontents = listdir(self.im_folder)
@@ -78,6 +74,24 @@ class whole_brain_grouper(brainSlice_tissue):
                 self.whole_brain_data['im_name_list'] = []
                 self.whole_brain_data['im_ref_id_list'] = []
                 Exception('Can not process whole brain image file: '+ im)
+
+        self.whole_brain_data['slide_num'] = np.array([int(j) for j in self.whole_brain_data['slide_num']]).flatten()
+        self.whole_brain_data['brain_num'] = np.array([int(j) for j in self.whole_brain_data['brain_num']]).flatten()
+        return
+
+    def slide_num_info(self):
+
+        slide_of_brain = np.unique(self.whole_brain_data['slide_num'])-1
+        max_brain = np.zeros([len(slide_of_brain), 1])
+        for s in slide_of_brain:
+            indx = (self.whole_brain_data['slide_num']==(s+1))
+            temp_brain_num = np.array(self.whole_brain_data['brain_num']).flatten()
+
+            brain_of_this_slide = temp_brain_num[indx]
+
+            max_brain[s] = np.max(np.array([int(j) for j in brain_of_this_slide]))
+
+        self.brain_per_slide = max_brain
         return
 
     def upload_whole_brain(self): #either upload the whole_brain_data dictionary or getting ref_image_id back if already loaded
@@ -104,6 +118,7 @@ class whole_brain_grouper(brainSlice_tissue):
                 djimage.WholeBrainImage.insert1(uploadDict)
         self.download_whole_brain_id()
         # fetch the automatcially generated image ref ids after uploading
+        print('Uploading brain successful! You can now save the ref_id.')
         return
 
     def save_whole_brain_imInfo(self):
@@ -220,10 +235,13 @@ class whole_brain_grouper(brainSlice_tissue):
     def calculate_AP(self, slide_num, brain_num, slicing_backwards = True):
         prev_brain = int(brain_num)
         if (slide_num !=1):
-            for i in range(int(slide_num)-1):
+            for i in range(slide_num-1):
                 prev_brain += self.brain_per_slide[i]
 
         ap = prev_brain * self.slice_thickness
+        if isinstance(ap, list):
+            ap = ap[0]
+
         if (slicing_backwards):
             return -ap
         else:
@@ -259,7 +277,6 @@ class sd_im_grouper(animal):
     def assign_sdIm_toAxonIm(self):
         #todo
         return
-
     def download_image_id_to_table(self, original_folder):#input the folder where uploading into sln_image.Image happened
         image_id_list = []
         for i in range(len(self.sd_table)):
@@ -286,10 +303,6 @@ class sd_im_grouper(animal):
         with nd2.ND2File(nd2p) as originalfile:
             metadata = originalfile.metadata
         return
-
-
-
-
 
 
 

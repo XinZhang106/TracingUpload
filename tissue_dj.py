@@ -1,7 +1,6 @@
 from os import path, mkdir
 import startup
 import pickle
-
 from startup import djtissue, djanimal
 from startup import project_root
 
@@ -49,8 +48,8 @@ class retina_tissue(animal):
             self.retina_id = self.retina_id['tissue_id']
             djtissue.Retina.insert1({'tissue_id':self.retina_id, 'animal_id':self.animal_id,
                                     'side':self.retina_side})
-            print('Inserting successful!')
-        return
+            print('Inserting successful! New retina tissue id: %d', self.retina_id)
+        return self.retina_id
 
     def save_local(self):
         file_name = 'retina_tissue.plk'
@@ -60,9 +59,6 @@ class retina_tissue(animal):
             pickle.dump(self, f)
         return
 
-    def downloader(self):
-        #todo
-        return
 
 class brainSlice_tissue(animal):
     brain_slice_id = None
@@ -90,7 +86,7 @@ class brainSlice_tissue(animal):
 
         query = djtissue.BrainSliceBatch & qdic
         result = query.fetch('tissue_id')
-        if (bool(result)):
+        if (result.size>0):
             print('brain slice tissue already exists!')
             self.brain_slice_id = result[0]
         else:
@@ -103,7 +99,7 @@ class brainSlice_tissue(animal):
                                               'slicing_orientation': self.slice_orientation,
                                               'thickness': self.slice_thickness,
                                              'animal_id':self.animal_id})
-        return
+        return self.brain_slice_id
 
     def save_local(self):
         file_name = 'brian_slice_tissue.plk'
@@ -112,9 +108,6 @@ class brainSlice_tissue(animal):
             pickle.dump(self,f)
         return
 
-    def downloader(self):
-        #todo fill this functon
-        return
 
 
 
